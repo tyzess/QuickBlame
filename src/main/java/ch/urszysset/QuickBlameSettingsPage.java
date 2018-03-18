@@ -12,14 +12,19 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 public class QuickBlameSettingsPage implements Configurable {
 
     private DefaultListModel<QuickBlameMappingEntry> quickBlameMappingEntriesListModel = new DefaultListModel<>();
     private JBList<QuickBlameMappingEntry> quickBlameMappingEntriesList;
-    private Set<QuickBlameMappingEntry> quickBlameMappingEntries = new HashSet<>(); // TODO replace with Map
+    private Map<String, String> quickBlameMap = new HashMap<>();
+
+    public QuickBlameSettingsPage() {
+        QuickBlameSettings instance = QuickBlameSettings.getInstance();
+        setData(instance);
+    }
 
     @Nls
     @Override
@@ -30,49 +35,52 @@ public class QuickBlameSettingsPage implements Configurable {
     @Nullable
     @Override
     public JComponent createComponent() {
+        addEntriesToListModel(quickBlameMappingEntriesListModel, quickBlameMap);
         quickBlameMappingEntriesList = new JBList<>(quickBlameMappingEntriesListModel);
         quickBlameMappingEntriesList.setEmptyText("No QuickBlame author name mappings configured!");
 
         return ToolbarDecorator.createDecorator(quickBlameMappingEntriesList)
-                .setAddAction(getAddActionButtonRunnable(quickBlameMappingEntries))
-                .setRemoveAction(getRemoveActionButtonRunnable(quickBlameMappingEntries))
-                .setEditAction(getEditActionButtonRunnable(quickBlameMappingEntries))
+                .setAddAction(getAddActionButtonRunnable(quickBlameMap))
+                .setRemoveAction(getRemoveActionButtonRunnable(quickBlameMap))
+                .setEditAction(getEditActionButtonRunnable(quickBlameMap))
                 .disableUpDownActions()
                 .createPanel();
     }
 
-    private AnActionButtonRunnable getEditActionButtonRunnable(Set<QuickBlameMappingEntry> entries) {
+    private void addEntriesToListModel(DefaultListModel<QuickBlameMappingEntry> listModel, Map<String, String> quickBlameMap) {
+        quickBlameMap.forEach((key, value) -> listModel.addElement(new QuickBlameMappingEntry(key, value)));
+    }
+
+    private AnActionButtonRunnable getEditActionButtonRunnable(Map<String, String> entries) {
         return anActionButton -> {
             QuickBlameMappingEntry oldQuickBlameMappingEntry = quickBlameMappingEntriesList.getSelectedValue();
             QuickBlameMappingEntry entry = showFastBlameEntryDialog(oldQuickBlameMappingEntry);
             if (entry != null && !entry.equals(oldQuickBlameMappingEntry)) {
-                entries.remove(oldQuickBlameMappingEntry);
+                entries.remove(oldQuickBlameMappingEntry.getKey());
+                entries.put(entry.getKey(), entry.getValue());
                 quickBlameMappingEntriesListModel.removeElement(oldQuickBlameMappingEntry);
-                if (entries.add(entry)) {
-                    quickBlameMappingEntriesListModel.addElement(entry);
-                }
+                quickBlameMappingEntriesListModel.addElement(entry);
             }
         };
     }
 
     @NotNull
-    private AnActionButtonRunnable getRemoveActionButtonRunnable(Set<QuickBlameMappingEntry> entries) {
+    private AnActionButtonRunnable getRemoveActionButtonRunnable(Map<String, String> entries) {
         return anActionButton -> {
-            for (QuickBlameMappingEntry selectedValue : quickBlameMappingEntriesList.getSelectedValuesList()) {
-                entries.remove(selectedValue);
-                quickBlameMappingEntriesListModel.removeElement(selectedValue);
+            for (QuickBlameMappingEntry selectedEntry : quickBlameMappingEntriesList.getSelectedValuesList()) {
+                entries.remove(selectedEntry.getKey());
+                quickBlameMappingEntriesListModel.removeElement(selectedEntry);
             }
         };
     }
 
     @NotNull
-    private AnActionButtonRunnable getAddActionButtonRunnable(Set<QuickBlameMappingEntry> entries) {
+    private AnActionButtonRunnable getAddActionButtonRunnable(Map<String, String> entries) {
         return anActionButton -> {
             QuickBlameMappingEntry entry = showFastBlameEntryDialog();
             if (entry != null) {
-                if (entries.add(entry)) {
-                    quickBlameMappingEntriesListModel.addElement(entry);
-                }
+                entries.put(entry.getKey(), entry.getValue());
+                quickBlameMappingEntriesListModel.addElement(entry);
             }
         };
     }
@@ -93,7 +101,7 @@ public class QuickBlameSettingsPage implements Configurable {
 
     private class FastBlameEntryDialog extends DialogWrapper {
 
-        private final static String DIALOG_TITLE = "BlameEntry";
+        private final static String DIALOG_TITLE = "QuickBlame Mapping";
         private JPanel panel;
         private JTextField keyField;
         private JTextField valueField;
@@ -142,14 +150,14 @@ public class QuickBlameSettingsPage implements Configurable {
         }
 
         private boolean containsKey() {
-            return quickBlameMappingEntries.stream()
-                    .anyMatch(quickBlameMappingEntry -> quickBlameMappingEntry.getKey().equals(keyField.getText()));
+            return quickBlameMap.keySet().stream()
+                    .anyMatch(quickBlameKey -> quickBlameKey.equals(keyField.getText()));
         }
     }
 
     @Override
     public boolean isModified() {
-        return false; // TODO implement
+        return !QuickBlameSettings.getInstance().getQuickBlameMap().equals(quickBlameMap);
     }
 
     @Override
@@ -159,10 +167,10 @@ public class QuickBlameSettingsPage implements Configurable {
     }
 
     private void getData(QuickBlameSettings instance) {
-        instance.setBlameMap(null); // TODO implement
+        instance.setQuickBlameMap(quickBlameMap);
     }
 
     private void setData(QuickBlameSettings instance) {
-        // TODO implement
+        quickBlameMap = instance.getQuickBlameMap();
     }
 }

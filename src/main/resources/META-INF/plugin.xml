@@ -19,6 +19,7 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="ch.urszysset.QuickBlameSettings"/>
         <applicationConfigurable instance="ch.urszysset.QuickBlameSettingsPage"/>
     </extensions>
 

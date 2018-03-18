@@ -48,7 +48,11 @@ public class QuickBlameAction extends AnAction {
             Pattern pattern = Pattern.compile(AUTHOR_REGEX);
             Matcher matcher = pattern.matcher(toolTip);
             if (matcher.find()) {
-                String author = matcher.group(1);
+                String author = matcher.group(1).trim();
+                QuickBlameSettings instance = QuickBlameSettings.getInstance();
+                if (instance.containsMappingForAuthor(author)) {
+                    author = instance.getMappedAuthorName(author);
+                }
                 Point point = editor.logicalPositionToXY(editor.getCaretModel().getLogicalPosition());
                 SwingUtilities.convertPointToScreen(point, editor.getContentComponent());
                 TooltipGroup tooltipGroup = new TooltipGroup("WhatShouldBeHere", 100);
@@ -74,7 +78,6 @@ public class QuickBlameAction extends AnAction {
     }
 
     @Override
-    public void update(AnActionEvent e) {
-        // TODO implement
+    public void update(AnActionEvent event) {
     }
 }
