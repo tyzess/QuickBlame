@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/quick-blame.iml" filepath="$PROJECT_DIR$/.idea/modules/quick-blame.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/quick-blame_main.iml" filepath="$PROJECT_DIR$/.idea/modules/quick-blame_main.iml" group="quick-blame" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/quick-blame_test.iml" filepath="$PROJECT_DIR$/.idea/modules/quick-blame_test.iml" group="quick-blame" />
+    </modules>
+  </component>
+</project>

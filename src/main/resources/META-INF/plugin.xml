@@ -1,0 +1,30 @@
+<idea-plugin>
+    <id>ch.urszysset</id>
+    <name>QuickBlame</name>
+    <version>0.0.1</version>
+    <vendor email="UrsZysset@gmail.com" url="">Urs Zysset</vendor>
+
+    <description><![CDATA[
+      Intellij Plugin that helps you blame your co-workers.<br>
+    ]]></description>
+
+    <change-notes><![CDATA[
+      Release 0.0.1: Initial build.<br>
+    ]]>
+    </change-notes>
+
+    <idea-version since-build="162"/>
+
+    <depends>Git4Idea</depends>
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable instance="ch.urszysset.QuickBlameSettingsPage"/>
+    </extensions>
+
+    <actions>
+        <action id="quickBlame" class="ch.urszysset.QuickBlameAction" text="QuickBlame" description="Blame your co-workers!">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+    </actions>
+</idea-plugin>
