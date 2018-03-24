@@ -4,7 +4,10 @@ import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataKeys;
-import com.intellij.openapi.editor.*;
+import com.intellij.openapi.editor.Caret;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory;
@@ -30,20 +33,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-
-import static com.intellij.openapi.editor.EditorKind.PREVIEW;
 
 
 public class QuickBlameAction extends AnAction {
 
     private final static String CAPTURE_AUTHOR_AND_EMAIL = "Author\\:\\s(.*?)\\s\\<(.*)?\\>";
     private final static String CAPTURE_CODE_ADDITIONS = "\\@\\@.*?\\@\\@(?:(?:.|\n)*?)\\+\\s*(.*)?\n";
+    private final static String CAPTURE_CODE_ADDITIONS_EACH = "(?:(?:\\n|^)\\+\\s*(.*)?(?<!\\n)|(?:\\n|^)(?!\\+|\\-)\\s*(.*)?(?<!\\n))";
     private final static String MATCH_NEW_COMMIT_MESSAGE = "\n(?=commit[ ])";
 
     private final Pattern authorPattern = Pattern.compile(CAPTURE_AUTHOR_AND_EMAIL);
-    private final Pattern codeAdditionsPattern = Pattern.compile(CAPTURE_CODE_ADDITIONS);
+    private final Pattern codeAdditionsPattern = Pattern.compile(CAPTURE_CODE_ADDITIONS_EACH);
     private Caret caret;
 
 
@@ -76,12 +76,11 @@ public class QuickBlameAction extends AnAction {
     }
 
     private int getSelectionStartLine() {
-        return caret.getSelectionStartPosition().getLine();
+        return caret.getSelectionStartPosition().getLine() + 1;
     }
 
     private int getSelectionEndLine() {
-        VisualPosition selectionEndPosition = caret.getSelectionEndPosition();
-        return selectionEndPosition.getLine();
+        return caret.getSelectionEndPosition().getLine() + 1;
     }
 
     private JBPopup buildPopup(Project project, List<String[]> changes) {
@@ -135,13 +134,22 @@ public class QuickBlameAction extends AnAction {
     }
 
     private String parseCodeAdditions(String commit) {
-        Matcher matcher = codeAdditionsPattern.matcher(commit);
-        if (matcher.find()) {
-            return IntStream.range(1, matcher.groupCount() + 1)
-                    .mapToObj(matcher::group)
-                    .collect(Collectors.joining("\n"));
+        StringBuilder code = new StringBuilder();
+        commit = commit.split("\\@\\@(.*)?\\@\\@\n")[1];
+        String[] lines = commit.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("-")) {
+                continue;
+            }
+            Matcher matcher = codeAdditionsPattern.matcher(line);
+            if (matcher.find()) {
+                code.append(matcher.group()).append("\n");
+            } else {
+                code.append("\n");
+            }
         }
-        return "";
+
+        return code.toString();
     }
 
     private String parseAuthor(String commit) {
