@@ -1,83 +1,174 @@
 package ch.urszysset;
 
-import com.intellij.codeInsight.hint.TooltipController;
-import com.intellij.codeInsight.hint.TooltipGroup;
+import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataKeys;
-import com.intellij.openapi.editor.Caret;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.LogicalPosition;
+import com.intellij.openapi.editor.*;
+import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
+import com.intellij.openapi.editor.highlighter.EditorHighlighter;
+import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory;
+import com.intellij.openapi.editor.impl.EditorImpl;
+import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.popup.JBPopup;
+import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
-import git4idea.annotate.GitAnnotationProvider;
-import git4idea.annotate.GitFileAnnotation;
-import org.jetbrains.annotations.Nullable;
+import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBPanel;
+import com.intellij.vcsUtil.VcsUtil;
+import git4idea.GitUtil;
+import git4idea.commands.GitCommand;
+import git4idea.commands.GitSimpleHandler;
+import git4idea.history.GitHistoryUtils;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static com.intellij.openapi.editor.EditorKind.PREVIEW;
 
 
 public class QuickBlameAction extends AnAction {
 
-    private final static String AUTHOR_REGEX = "Author\\:(.*)";
+    private final static String CAPTURE_AUTHOR_AND_EMAIL = "Author\\:\\s(.*?)\\s\\<(.*)?\\>";
+    private final static String CAPTURE_CODE_ADDITIONS = "\\@\\@.*?\\@\\@(?:(?:.|\n)*?)\\+\\s*(.*)?\n";
+    private final static String MATCH_NEW_COMMIT_MESSAGE = "\n(?=commit[ ])";
+
+    private final Pattern authorPattern = Pattern.compile(CAPTURE_AUTHOR_AND_EMAIL);
+    private final Pattern codeAdditionsPattern = Pattern.compile(CAPTURE_CODE_ADDITIONS);
+    private Caret caret;
+
 
     public void actionPerformed(AnActionEvent event) {
         Project project = event.getProject();
-        VirtualFile virtualFile = (VirtualFile) event.getDataContext().getData(DataKeys.VIRTUAL_FILE.getName());
-        Editor editor = (Editor) event.getDataContext().getData(DataKeys.EDITOR.getName());
-        Caret caret = (Caret) event.getDataContext().getData(DataKeys.CARET.getName());
+        Editor editor = getEditor(event);
+        VirtualFile virtualFile = getVirtualFile(event);
+        caret = getCaret(event);
 
-        if (project == null || virtualFile == null || editor == null || caret == null) {
-            return; // TODO improve null cases
+        int selectionStartLine = getSelectionStartLine();
+        int selectionEndLine = getSelectionEndLine();
+
+        String output = runGitLogCommand(project, virtualFile, selectionStartLine, selectionEndLine);
+        List<String[]> changes = parseGitLogOutput(output);
+
+        JBPopup jbPopup = buildPopup(project, changes);
+        jbPopup.showInBestPositionFor(editor);
+    }
+
+    private Editor getEditor(AnActionEvent event) {
+        return (Editor) event.getDataContext().getData(DataKeys.EDITOR.getName());
+    }
+
+    private VirtualFile getVirtualFile(AnActionEvent event) {
+        return (VirtualFile) event.getDataContext().getData(DataKeys.VIRTUAL_FILE.getName());
+    }
+
+    private Caret getCaret(AnActionEvent event) {
+        return (Caret) event.getDataContext().getData(DataKeys.CARET.getName());
+    }
+
+    private int getSelectionStartLine() {
+        return caret.getSelectionStartPosition().getLine();
+    }
+
+    private int getSelectionEndLine() {
+        VisualPosition selectionEndPosition = caret.getSelectionEndPosition();
+        return selectionEndPosition.getLine();
+    }
+
+    private JBPopup buildPopup(Project project, List<String[]> changes) {
+        JComponent panel = new JBPanel<>(new GridLayout(0, 2));
+
+        for (String[] change : changes) {
+            panel.add(new JBLabel(change[0]));
+            panel.add(buildEditorField(project, change[1]));
         }
 
-        GitFileAnnotation annotation = getGitFileAnnotation(project, virtualFile);
+        JBPopupFactory popupFactory = JBPopupFactory.getInstance();
+        return popupFactory.createComponentPopupBuilder(panel, null).createPopup();
+    }
 
-        if (annotation == null) {
-            return; // TODO improve null cases
+    private JComponent buildEditorField(Project project, String text) {
+        EditorImpl readOnlyViewer = createViewer(project, text);
+        readOnlyViewer.setOneLineMode(isOneLineMode());
+        readOnlyViewer.setHighlighter(createLanguageHighlighter(project));
+        setLineNumberOffset(readOnlyViewer);
+        return readOnlyViewer.getComponent();
+    }
+
+    private void setLineNumberOffset(EditorImpl readOnlyViewer) {
+        EditorGutterComponentEx gutter = (EditorGutterComponentEx) readOnlyViewer.getGutter();
+        gutter.setLineNumberConvertor(i -> i + getSelectionStartLine());
+    }
+
+    private boolean isOneLineMode() {
+        return getSelectionStartLine() == getSelectionEndLine();
+    }
+
+    private EditorImpl createViewer(Project project, String text) {
+        Document myDocument = EditorFactory.getInstance().createDocument(text == null ? "" : text);
+        return (EditorImpl) EditorFactory.getInstance().createViewer(myDocument, project);//, PREVIEW);
+    }
+
+    private EditorHighlighter createLanguageHighlighter(Project project) {
+        FileType fileType = JavaLanguage.INSTANCE.getAssociatedFileType();
+        return EditorHighlighterFactory.getInstance().createEditorHighlighter(project, fileType);
+    }
+
+    private List<String[]> parseGitLogOutput(String s) {
+        String[] commits = s.split(MATCH_NEW_COMMIT_MESSAGE);
+        List<String[]> changes = new ArrayList<>();
+        for (String commit : commits) {
+            String author = parseAuthor(commit);
+            String code = parseCodeAdditions(commit);
+            changes.add(new String[]{author, code});
         }
+        return changes;
+    }
 
-        int lineNumber = getLineNumber(caret);
-        String toolTip = annotation.getToolTip(lineNumber);
+    private String parseCodeAdditions(String commit) {
+        Matcher matcher = codeAdditionsPattern.matcher(commit);
+        if (matcher.find()) {
+            return IntStream.range(1, matcher.groupCount() + 1)
+                    .mapToObj(matcher::group)
+                    .collect(Collectors.joining("\n"));
+        }
+        return "";
+    }
 
-        if (toolTip != null) {
-            Pattern pattern = Pattern.compile(AUTHOR_REGEX);
-            Matcher matcher = pattern.matcher(toolTip);
-            if (matcher.find()) {
-                String author = matcher.group(1).trim();
-                QuickBlameSettings instance = QuickBlameSettings.getInstance();
-                if (instance.containsMappingForAuthor(author)) {
-                    author = instance.getMappedAuthorName(author);
-                }
-                Point point = editor.logicalPositionToXY(editor.getCaretModel().getLogicalPosition());
-                SwingUtilities.convertPointToScreen(point, editor.getContentComponent());
-                TooltipGroup tooltipGroup = new TooltipGroup("WhatShouldBeHere", 100);
-                TooltipController.getInstance().showTooltip(editor, point, author, true, tooltipGroup);
+    private String parseAuthor(String commit) {
+        String author = "";
+        Matcher matcher = authorPattern.matcher(commit);
+        if (matcher.find()) {
+            author = matcher.group(1);
+            if (matcher.groupCount() >= 2) {
+                author += " " + matcher.group(2);
             }
         }
+        return author;
     }
 
-    @Nullable
-    private GitFileAnnotation getGitFileAnnotation(Project project, VirtualFile virtualFile) {
-        GitFileAnnotation annotate = null;
+    private String runGitLogCommand(Project project, VirtualFile virtualFile, int lineStart, int lineEnd) {
         try {
-            annotate = (GitFileAnnotation) new GitAnnotationProvider(project).annotate(virtualFile);
+            FilePath currentFilePath = VcsUtil.getFilePath(virtualFile.getPath());
+            FilePath repositoryFilePath = GitHistoryUtils.getLastCommitName(project, currentFilePath);
+            VirtualFile root = GitUtil.getGitRoot(repositoryFilePath);
+            GitSimpleHandler gitLogHandler = new GitSimpleHandler(project, root, GitCommand.LOG);
+            gitLogHandler.setStdoutSuppressed(true);
+            gitLogHandler.addParameters("-L" + lineStart + "," + lineEnd + ":" + virtualFile.getPath());
+            gitLogHandler.endOptions();
+            return gitLogHandler.run();
         } catch (VcsException e) {
             e.printStackTrace();
+            return "";
         }
-        return annotate;
-    }
-
-    private int getLineNumber(Caret caret) {
-        LogicalPosition logicalPosition = caret.getLogicalPosition();
-        return logicalPosition.line;
-    }
-
-    @Override
-    public void update(AnActionEvent event) {
     }
 }
