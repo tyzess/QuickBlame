@@ -5,6 +5,7 @@ import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.ui.AnActionButtonRunnable;
+import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBList;
 import org.jetbrains.annotations.Nls;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -39,12 +41,21 @@ public class QuickBlameSettingsPage implements Configurable {
         quickBlameMappingEntriesList = new JBList<>(quickBlameMappingEntriesListModel);
         quickBlameMappingEntriesList.setEmptyText("No QuickBlame author name mappings configured!");
 
-        return ToolbarDecorator.createDecorator(quickBlameMappingEntriesList)
+        JPanel listPanel = ToolbarDecorator.createDecorator(quickBlameMappingEntriesList)
                 .setAddAction(getAddActionButtonRunnable(quickBlameMap))
                 .setRemoveAction(getRemoveActionButtonRunnable(quickBlameMap))
                 .setEditAction(getEditActionButtonRunnable(quickBlameMap))
                 .disableUpDownActions()
                 .createPanel();
+
+
+        JPanel panel = new JPanel();
+        panel.setBorder(IdeBorderFactory.createRoundedBorder());
+        panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
+        panel.add(listPanel);
+        panel.add(Box.createHorizontalGlue());
+        panel.setMinimumSize(new Dimension(Short.MAX_VALUE, 0));
+        return panel;
     }
 
     private void addEntriesToListModel(DefaultListModel<QuickBlameMappingEntry> listModel, Map<String, String> quickBlameMap) {
@@ -54,7 +65,7 @@ public class QuickBlameSettingsPage implements Configurable {
     private AnActionButtonRunnable getEditActionButtonRunnable(Map<String, String> entries) {
         return anActionButton -> {
             QuickBlameMappingEntry oldQuickBlameMappingEntry = quickBlameMappingEntriesList.getSelectedValue();
-            QuickBlameMappingEntry entry = showFastBlameEntryDialog(oldQuickBlameMappingEntry);
+            QuickBlameMappingEntry entry = showQuickBlameEntryDialog(oldQuickBlameMappingEntry);
             if (entry != null && !entry.equals(oldQuickBlameMappingEntry)) {
                 entries.remove(oldQuickBlameMappingEntry.getKey());
                 entries.put(entry.getKey(), entry.getValue());
@@ -77,7 +88,7 @@ public class QuickBlameSettingsPage implements Configurable {
     @NotNull
     private AnActionButtonRunnable getAddActionButtonRunnable(Map<String, String> entries) {
         return anActionButton -> {
-            QuickBlameMappingEntry entry = showFastBlameEntryDialog();
+            QuickBlameMappingEntry entry = showQuickBlameEntryDialog();
             if (entry != null) {
                 entries.put(entry.getKey(), entry.getValue());
                 quickBlameMappingEntriesListModel.addElement(entry);
@@ -85,28 +96,47 @@ public class QuickBlameSettingsPage implements Configurable {
         };
     }
 
-    private QuickBlameMappingEntry showFastBlameEntryDialog() {
-        return showFastBlameEntryDialog("", "");
+    private QuickBlameMappingEntry showQuickBlameEntryDialog() {
+        return showQuickBlameEntryDialog("", "");
     }
 
-    private QuickBlameMappingEntry showFastBlameEntryDialog(QuickBlameMappingEntry quickBlameMappingEntry) {
-        return showFastBlameEntryDialog(quickBlameMappingEntry.getKey(), quickBlameMappingEntry.getValue());
+    private QuickBlameMappingEntry showQuickBlameEntryDialog(QuickBlameMappingEntry quickBlameMappingEntry) {
+        return showQuickBlameEntryDialog(quickBlameMappingEntry.getKey(), quickBlameMappingEntry.getValue());
     }
 
-    private QuickBlameMappingEntry showFastBlameEntryDialog(String key, String value) {
-        FastBlameEntryDialog fastBlameEntryDialog = new FastBlameEntryDialog(key, value);
-        fastBlameEntryDialog.show();
-        return fastBlameEntryDialog.getFastBlameEntry();
+    private QuickBlameMappingEntry showQuickBlameEntryDialog(String key, String value) {
+        QuickBlameEntryDialog quickBlameEntryDialog = new QuickBlameEntryDialog(key, value);
+        quickBlameEntryDialog.show();
+        return quickBlameEntryDialog.getQuickBlameEntry();
     }
 
-    private class FastBlameEntryDialog extends DialogWrapper {
+    @Override
+    public boolean isModified() {
+        return !QuickBlameSettings.getInstance().getQuickBlameMap().equals(quickBlameMap);
+    }
+
+    @Override
+    public void apply() throws ConfigurationException {
+        QuickBlameSettings instance = QuickBlameSettings.getInstance();
+        getData(instance);
+    }
+
+    private void getData(QuickBlameSettings instance) {
+        instance.setQuickBlameMap(quickBlameMap);
+    }
+
+    private void setData(QuickBlameSettings instance) {
+        quickBlameMap = instance.getQuickBlameMap();
+    }
+
+    private class QuickBlameEntryDialog extends DialogWrapper {
 
         private final static String DIALOG_TITLE = "QuickBlame Mapping";
         private JPanel panel;
         private JTextField keyField;
         private JTextField valueField;
 
-        FastBlameEntryDialog(String key, String value) {
+        QuickBlameEntryDialog(String key, String value) {
             super(null);
             setTitle(DIALOG_TITLE);
 
@@ -130,7 +160,7 @@ public class QuickBlameSettingsPage implements Configurable {
             return panel;
         }
 
-        QuickBlameMappingEntry getFastBlameEntry() {
+        QuickBlameMappingEntry getQuickBlameEntry() {
             return new QuickBlameMappingEntry(keyField.getText(), valueField.getText());
         }
 
@@ -153,24 +183,5 @@ public class QuickBlameSettingsPage implements Configurable {
             return quickBlameMap.keySet().stream()
                     .anyMatch(quickBlameKey -> quickBlameKey.equals(keyField.getText()));
         }
-    }
-
-    @Override
-    public boolean isModified() {
-        return !QuickBlameSettings.getInstance().getQuickBlameMap().equals(quickBlameMap);
-    }
-
-    @Override
-    public void apply() throws ConfigurationException {
-        QuickBlameSettings instance = QuickBlameSettings.getInstance();
-        getData(instance);
-    }
-
-    private void getData(QuickBlameSettings instance) {
-        instance.setQuickBlameMap(quickBlameMap);
-    }
-
-    private void setData(QuickBlameSettings instance) {
-        quickBlameMap = instance.getQuickBlameMap();
     }
 }

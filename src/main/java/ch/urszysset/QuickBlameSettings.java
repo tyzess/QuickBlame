@@ -15,23 +15,6 @@ public class QuickBlameSettings implements PersistentStateComponent<QuickBlameSe
 
     private Map<String, String> quickBlameMap = new HashMap<>();
 
-    public Map<String, String> getQuickBlameMap() {
-        return quickBlameMap;
-    }
-
-    public boolean containsMappingForAuthor(String author) {
-        return quickBlameMap.keySet().stream()
-                .anyMatch(key -> key.equals(author));
-    }
-
-    public String getMappedAuthorName(String author) {
-        return quickBlameMap.get(author);
-    }
-
-    public void setQuickBlameMap(Map<String, String> quickBlameMap) {
-        this.quickBlameMap = quickBlameMap;
-    }
-
     public static QuickBlameSettings getInstance() {
         return ServiceManager.getService(QuickBlameSettings.class);
     }
@@ -45,5 +28,22 @@ public class QuickBlameSettings implements PersistentStateComponent<QuickBlameSe
     @Override
     public void loadState(QuickBlameSettings state) {
         XmlSerializerUtil.copyBean(state, this);
+    }
+
+    public Map<String, String> getQuickBlameMap() {
+        return quickBlameMap;
+    }
+
+    public void setQuickBlameMap(Map<String, String> quickBlameMap) {
+        this.quickBlameMap = quickBlameMap;
+    }
+
+    public boolean containsMappingForAuthor(String author) {
+        return quickBlameMap.keySet().stream()
+                .anyMatch(key -> key.equals(author));
+    }
+
+    public String getMappedAuthorName(String author) {
+        return quickBlameMap.get(author);
     }
 }
